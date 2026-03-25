@@ -816,8 +816,8 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		ForceAttemptHTTP2:     false,
-		DisableCompression:    true, // 禁止 Go 自动添加 Accept-Encoding: gzip，由请求方显式设置以匹配真实客户端指纹
+		ForceAttemptHTTP2:  false,
+		DisableCompression: false, // Go 自动处理 Accept-Encoding 和响应解压
 	}
 
 	// 根据代理类型选择合适的 TLS 指纹 Dialer

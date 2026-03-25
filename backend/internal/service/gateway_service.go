@@ -5705,11 +5705,6 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// 匹配真实 Claude Code 的 Accept-Encoding（禁用 Go 自动压缩后需显式设置）
-	if account.IsTLSFingerprintEnabled() {
-		req.Header.Set("accept-encoding", "gzip, deflate, br, zstd")
-	}
-
 	// Always capture a compact fingerprint line for later error diagnostics.
 	// We only print it when needed (or when the explicit debug flag is enabled).
 	if c != nil && tokenType == "oauth" {
