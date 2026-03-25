@@ -561,6 +561,7 @@ type GatewayService struct {
 	modelsListCacheTTL    time.Duration
 	settingService        *SettingService
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
+	telemetryService      *ClaudeTelemetryService
 	debugModelRouting     atomic.Bool
 	debugClaudeMimic      atomic.Bool
 }
@@ -589,6 +590,7 @@ func NewGatewayService(
 	rpmCache RPMCache,
 	digestStore *DigestSessionStore,
 	settingService *SettingService,
+	telemetryService *ClaudeTelemetryService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -620,6 +622,7 @@ func NewGatewayService(
 		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		telemetryService:     telemetryService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -4119,6 +4122,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 调试日志：记录即将转发的账号信息
 	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
 		account.ID, account.Name, account.Platform, account.Type, account.IsTLSFingerprintEnabled(), proxyURL)
+
+	// 触发遥测会话：确保 OAuth 账号有伴随心跳/事件日志流量
+	if s.telemetryService != nil && tokenType == "oauth" && account.IsTLSFingerprintEnabled() {
+		ua := ""
+		if c != nil {
+			ua = c.GetHeader("User-Agent")
+		}
+		s.telemetryService.EnsureSession(account.ID, token, proxyURL, ua, true)
+	}
+
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
 
@@ -5665,7 +5678,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// 非 Claude Code 客户端：按 opencode 的策略处理：
 			// - 强制 Claude Code 指纹相关请求头（尤其是 user-agent/x-stainless/x-app）
 			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
-			applyClaudeCodeMimicHeaders(req, reqStream)
+			applyClaudeCodeMimicHeaders(req, reqStream, account.ID)
 
 			incomingBeta := req.Header.Get("anthropic-beta")
 			// Match real Claude CLI traffic (per mitmproxy reports):
@@ -5690,6 +5703,11 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 				}
 			}
 		}
+	}
+
+	// 匹配真实 Claude Code 的 Accept-Encoding（禁用 Go 自动压缩后需显式设置）
+	if account.IsTLSFingerprintEnabled() {
+		req.Header.Set("accept-encoding", "gzip, deflate, br, zstd")
 	}
 
 	// Always capture a compact fingerprint line for later error diagnostics.
@@ -6078,14 +6096,16 @@ var defaultDroppedBetasSet = buildBetaTokenSet(claude.DroppedBetas)
 // applyClaudeCodeMimicHeaders forces "Claude Code-like" request headers.
 // This mirrors opencode-anthropic-auth behavior: do not trust downstream
 // headers when using Claude Code-scoped OAuth credentials.
-func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
+// Uses per-account diversified headers to avoid clustering detection.
+func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, accountID int64) {
 	if req == nil {
 		return
 	}
 	// Start with the standard defaults (fill missing).
 	applyClaudeOAuthHeaderDefaults(req, isStream)
-	// Then force key headers to match Claude Code fingerprint regardless of what the client sent.
-	for key, value := range claude.DefaultHeaders {
+	// Use per-account diversified headers to avoid all proxy users sharing identical fingerprints.
+	headers := claude.HeadersForAccount(accountID)
+	for key, value := range headers {
 		if value == "" {
 			continue
 		}
@@ -8300,7 +8320,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
-			applyClaudeCodeMimicHeaders(req, false)
+			applyClaudeCodeMimicHeaders(req, false, account.ID)
 
 			incomingBeta := req.Header.Get("anthropic-beta")
 			requiredBetas := []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking, claude.BetaTokenCounting}

@@ -44,21 +44,70 @@ const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + 
 // APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
-// DefaultHeaders 是 Claude Code 客户端默认请求头。
+// DefaultHeaders 是 Claude Code 客户端默认请求头（使用最新版本）。
 var DefaultHeaders = map[string]string{
-	// Keep these in sync with recent Claude CLI traffic to reduce the chance
-	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
-	"User-Agent":                                "claude-cli/2.1.22 (external, cli)",
+	"User-Agent":                                "claude-cli/2.1.39 (external, cli)",
 	"X-Stainless-Lang":                          "js",
-	"X-Stainless-Package-Version":               "0.70.0",
+	"X-Stainless-Package-Version":               "0.73.0",
 	"X-Stainless-OS":                            "Linux",
-	"X-Stainless-Arch":                          "arm64",
+	"X-Stainless-Arch":                          "x64",
 	"X-Stainless-Runtime":                       "node",
-	"X-Stainless-Runtime-Version":               "v24.13.0",
+	"X-Stainless-Runtime-Version":               "v24.3.0",
 	"X-Stainless-Retry-Count":                   "0",
 	"X-Stainless-Timeout":                       "600",
 	"X-App":                                     "cli",
 	"Anthropic-Dangerous-Direct-Browser-Access": "true",
+}
+
+// ClientProfile represents a realistic Claude Code client fingerprint.
+type ClientProfile struct {
+	CLIVersion     string
+	PkgVersion     string
+	OS             string
+	Arch           string
+	RuntimeVersion string
+}
+
+// clientProfiles provides diversity to avoid clustering all users on a single fingerprint.
+// Values are drawn from real Claude Code releases observed in the wild.
+var clientProfiles = []ClientProfile{
+	{"2.1.39", "0.73.0", "Linux", "x64", "v24.3.0"},
+	{"2.1.38", "0.73.0", "Linux", "arm64", "v24.3.0"},
+	{"2.1.39", "0.73.0", "macOS", "arm64", "v24.3.0"},
+	{"2.1.37", "0.72.0", "Linux", "x64", "v22.17.1"},
+	{"2.1.36", "0.72.0", "macOS", "arm64", "v22.18.0"},
+	{"2.1.39", "0.73.0", "macOS", "x64", "v24.3.0"},
+	{"2.1.35", "0.71.0", "Linux", "x64", "v22.17.1"},
+	{"2.1.38", "0.73.0", "macOS", "arm64", "v22.18.0"},
+}
+
+// GetClientProfileByAccountID returns a deterministic but diverse client profile
+// for the given account ID, avoiding the clustering problem where all proxy
+// users share identical User-Agent / SDK versions.
+func GetClientProfileByAccountID(accountID int64) ClientProfile {
+	idx := accountID
+	if idx < 0 {
+		idx = -idx
+	}
+	return clientProfiles[int(idx%int64(len(clientProfiles)))]
+}
+
+// HeadersForAccount returns Claude Code headers diversified by account ID.
+func HeadersForAccount(accountID int64) map[string]string {
+	p := GetClientProfileByAccountID(accountID)
+	return map[string]string{
+		"User-Agent":                                "claude-cli/" + p.CLIVersion + " (external, cli)",
+		"X-Stainless-Lang":                          "js",
+		"X-Stainless-Package-Version":               p.PkgVersion,
+		"X-Stainless-OS":                            p.OS,
+		"X-Stainless-Arch":                          p.Arch,
+		"X-Stainless-Runtime":                       "node",
+		"X-Stainless-Runtime-Version":               p.RuntimeVersion,
+		"X-Stainless-Retry-Count":                   "0",
+		"X-Stainless-Timeout":                       "600",
+		"X-App":                                     "cli",
+		"Anthropic-Dangerous-Direct-Browser-Access": "true",
+	}
 }
 
 // Model 表示一个 Claude 模型

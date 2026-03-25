@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
@@ -298,7 +299,7 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
-	return tlsConn, nil
+	return httputil.WrapConn(tlsConn), nil
 }
 
 // DialTLSContext establishes a TLS connection through HTTP proxy with the configured fingerprint.
@@ -408,7 +409,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
-	return tlsConn, nil
+	return httputil.WrapConn(tlsConn), nil
 }
 
 // DialTLSContext establishes a TLS connection with the configured fingerprint.
@@ -474,7 +475,7 @@ func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.
 		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
-	return tlsConn, nil
+	return httputil.WrapConn(tlsConn), nil
 }
 
 // buildClientHelloSpec constructs the ClientHello specification based on the profile.

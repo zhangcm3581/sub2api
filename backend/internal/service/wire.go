@@ -405,6 +405,11 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+// ProvideClaudeTelemetryService creates and starts the Claude telemetry simulator.
+func ProvideClaudeTelemetryService(httpUpstream HTTPUpstream) *ClaudeTelemetryService {
+	return NewClaudeTelemetryService(httpUpstream)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -424,6 +429,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingCacheService,
 	NewAnnouncementService,
 	NewAdminService,
+	ProvideClaudeTelemetryService,
 	NewGatewayService,
 	ProvideSoraMediaStorage,
 	ProvideSoraMediaCleanupService,
