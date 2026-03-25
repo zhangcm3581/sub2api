@@ -88,6 +88,60 @@ func TestTransformHTTPHeaders_PreservesBody(t *testing.T) {
 	}
 }
 
+func TestTransformHTTPHeaders_ExactLength(t *testing.T) {
+	body := `{"model":"claude-sonnet-4-5","max_tokens":4096,"messages":[{"role":"user","content":"hello world, this is a test message"}]}`
+	raw := "POST /v1/messages HTTP/1.1\r\n" +
+		"Host: api.anthropic.com\r\n" +
+		"Content-Type: application/json\r\n" +
+		"Authorization: Bearer sk-ant-test-key-12345\r\n" +
+		"User-Agent: claude-cli/2.1.39 (external, cli)\r\n" +
+		"Accept: application/json\r\n" +
+		"\r\n" + body
+
+	result := TransformHTTPHeaders([]byte(raw))
+
+	if len(result) != len(raw) {
+		t.Errorf("output length %d != input length %d (diff=%d)", len(result), len(raw), len(result)-len(raw))
+	}
+
+	resultStr := string(result)
+	if !strings.HasSuffix(resultStr, "\r\n\r\n"+body) {
+		sep := strings.Index(resultStr, "\r\n\r\n")
+		if sep < 0 {
+			t.Fatalf("no \\r\\n\\r\\n separator found in output")
+		}
+		actualBody := resultStr[sep+4:]
+		t.Errorf("body mismatch after separator:\nwant (len %d): %s\ngot  (len %d): %s", len(body), body, len(actualBody), actualBody)
+	}
+
+	sepCount := strings.Count(resultStr, "\r\n\r\n")
+	if sepCount != 1 {
+		t.Errorf("expected exactly 1 header/body separator (\\r\\n\\r\\n), got %d", sepCount)
+	}
+}
+
+func TestTransformHTTPHeaders_LargeBody(t *testing.T) {
+	largeContent := strings.Repeat("x", 25000)
+	body := `{"content":"` + largeContent + `"}`
+	raw := "POST /v1/messages HTTP/1.1\r\n" +
+		"Content-Type: application/json\r\n" +
+		"Content-Length: " + strings.Repeat("0", len(body)/10000) + "\r\n" +
+		"Host: api.anthropic.com\r\n" +
+		"Authorization: Bearer sk-ant-test\r\n" +
+		"\r\n" + body
+
+	result := TransformHTTPHeaders([]byte(raw))
+	resultStr := string(result)
+
+	if !strings.HasSuffix(resultStr, body) {
+		t.Errorf("large body was corrupted or truncated, output ends with: ...%s", resultStr[max(0, len(resultStr)-50):])
+	}
+
+	if len(result) != len(raw) {
+		t.Errorf("output length %d != input length %d (diff=%d)", len(result), len(raw), len(result)-len(raw))
+	}
+}
+
 func TestTransformHTTPHeaders_NonHTTPPassthrough(t *testing.T) {
 	data := []byte("this is not an HTTP request")
 	result := TransformHTTPHeaders(data)

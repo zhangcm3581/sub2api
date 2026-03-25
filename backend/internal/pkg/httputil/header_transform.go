@@ -81,7 +81,7 @@ func TransformHTTPHeaders(data []byte) []byte {
 	}
 
 	headerSection := data[:headerEnd]
-	bodySection := data[headerEnd:] // includes \r\n\r\n
+	bodySection := data[headerEnd+2:] // skip first \r\n; loop adds \r\n after each header, so only need \r\n (blank line) + body
 
 	// Split into request line and header lines
 	firstLineEnd := bytes.Index(headerSection, []byte("\r\n"))
