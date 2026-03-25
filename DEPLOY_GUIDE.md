@@ -111,7 +111,7 @@ cd ~/sub2api/deploy
 # 复制本地目录版 compose 文件
 cp docker-compose.local.yml docker-compose.yml
 
-# 创建数据目录
+# 在 deploy/ 目录下创建数据目录（用于持久化 PG、Redis 和应用数据）
 mkdir -p data postgres_data redis_data
 ```
 
@@ -131,7 +131,7 @@ docker compose up -d
 # 查看启动日志
 docker compose logs -f sub2api
 ```
-
+ 
 看到类似输出说明启动成功：
 
 ```
